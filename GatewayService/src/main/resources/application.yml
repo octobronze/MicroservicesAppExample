@@ -1,0 +1,23 @@
+server:
+  port: 8000
+
+spring:
+  cloud:
+    gateway:
+      routes:
+      - id: user-service
+        uri: lb://user-service
+        predicates:
+          - Path=/user/**
+
+      - id: authentication-service
+        uri: lb://authentication-service
+        predicates:
+          - Path=/auth/**
+  application:
+    name: gateway-service
+
+eureka:
+  client:
+    service-url:
+      defaultZone : http://localhost:8761/eureka/
