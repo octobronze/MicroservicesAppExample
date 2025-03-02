@@ -1,0 +1,45 @@
+server:
+  port: ${SERVER_PORT}
+
+spring:
+  cloud:
+    gateway:
+      routes:
+      - id: user-service
+        uri: lb://user-service
+        predicates:
+          - Path=/user/**
+      - id: auth-service
+        uri: lb://auth-service
+        predicates:
+          - Path=/auth/**
+      discovery:
+        locator:
+          enabled: true
+          lower-case-service-id: true
+
+  application:
+    name: gateway-service
+
+eureka:
+  instance:
+    hostname:
+      ${EUREKA_INSTANCE_HOSTNAME}
+  client:
+    service-url:
+      defaultZone : ${EUREKA_URL}
+
+logging:
+  level:
+    # Логирование работы самого Gateway (какие предикаты сработали, какой маршрут выбран)
+    org.springframework.cloud.gateway: TRACE
+
+    # Логирование балансировщика нагрузки (как lb://user-service превращается в IP)
+    org.springframework.cloud.loadbalancer: DEBUG
+
+    # Логирование клиента Eureka (какие данные о сервисах Gateway получает из Эврики)
+    com.netflix.discovery: DEBUG
+    com.netflix.eureka: DEBUG
+
+    # Логирование сетевых запросов Reactor Netty (покажет точный URL, куда уходит POST-запрос)
+    reactor.netty.http.client: DEBUG

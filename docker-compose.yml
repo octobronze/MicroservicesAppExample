@@ -1,0 +1,222 @@
+services:
+  auth-service-db:
+    container_name: "auth-service-db"
+    image: mariadb:11.6.2
+    environment:
+      MYSQL_ROOT_PASSWORD: ${AUTH_DB_ROOT_PASSWORD}
+      MYSQL_DATABASE: auth_service_db
+      MYSQL_USER: ${AUTH_DB_USERNAME}
+      MYSQL_PASSWORD: ${AUTH_DB_PASSWORD}
+    ports:
+      - ${AUTH_DB_OUTER_PORT}:3306
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD-SHELL", "mariadb -u root -p$$MYSQL_ROOT_PASSWORD -e 'SELECT 1;'"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+      start_period: 15s
+
+  user-service-db:
+    container_name: "user-service-db"
+    image: mariadb:11.6.2
+    environment:
+      MYSQL_ROOT_PASSWORD: ${USER_DB_ROOT_PASSWORD}
+      MYSQL_DATABASE: user_service_db
+      MYSQL_USER: ${USER_DB_USERNAME}
+      MYSQL_PASSWORD: ${USER_DB_PASSWORD}
+    ports:
+      - ${USER_DB_OUTER_PORT}:3306
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD-SHELL", "mariadb -u root -p$$MYSQL_ROOT_PASSWORD -e 'SELECT 1;'"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+      start_period: 15s
+
+  kafka:
+    container_name: "kafka-server"
+    image: apache/kafka:3.9.0
+    ports:
+      - ${KAFKA_OUTER_PORT}:${KAFKA_SERVER_PORT}
+    restart: unless-stopped
+    environment:
+      SERVER_PORT: ${KAFKA_SERVER_PORT}
+      KAFKA_NODE_ID: 1
+      KAFKA_PROCESS_ROLES: broker,controller
+      KAFKA_LISTENERS: ${KAFKA_LISTENERS}
+      KAFKA_ADVERTISED_LISTENERS: ${KAFKA_ADVERTISED_LISTENERS}
+      KAFKA_CONTROLLER_LISTENER_NAMES: CONTROLLER
+      KAFKA_LISTENER_SECURITY_PROTOCOL_MAP: CONTROLLER:PLAINTEXT,PLAINTEXT:PLAINTEXT
+      KAFKA_CONTROLLER_QUORUM_VOTERS: ${KAFKA_CONTROLLER_QUORUM_VOTERS}
+      KAFKA_OFFSETS_TOPIC_REPLICATION_FACTOR: 1
+      KAFKA_TRANSACTION_STATE_LOG_REPLICATION_FACTOR: 1
+      KAFKA_TRANSACTION_STATE_LOG_MIN_ISR: 1
+      KAFKA_GROUP_INITIAL_REBALANCE_DELAY_MS: 0
+      KAFKA_NUM_PARTITIONS: 1
+    healthcheck:
+      test: ["CMD-SHELL", "./opt/kafka/bin/kafka-metadata-quorum.sh --bootstrap-server kafka:$$SERVER_PORT describe --status | grep -q 'LeaderId' || exit 1"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+  eureka-service:
+    build:
+      context: ./EurekaService
+      additional_contexts:
+        assets: ./EurekaService
+    image: "eureka-service"
+    container_name: "eureka-service"
+    environment:
+      HOST_NAME: ${EUREKA_SERVICE_NAME}
+      SERVER_PORT: ${EUREKA_SERVER_PORT}
+    ports:
+      - ${EUREKA_OUTER_PORT}:${EUREKA_SERVER_PORT}
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD-SHELL", "curl -f http://$$HOST_NAME:$$SERVER_PORT/actuator/health"]
+      interval: 10s
+      timeout: 5s
+      retries: 3
+      start_period: 15s
+
+  gateway-service:
+    build:
+      context: ./GatewayService
+      additional_contexts:
+        assets: ./GatewayService
+    image: "gateway-service"
+    container_name: "gateway-service"
+    environment:
+      HOST_NAME: ${GATEWAY_SERVICE_NAME}
+      JWT_SIGNING_KEY: ${GATEWAY_JWT_SIGNING_KEY}
+      SERVER_PORT: ${GATEWAY_SERVER_PORT}
+      EUREKA_URL: ${GATEWAY_EUREKA_URL}
+      EUREKA_INSTANCE_HOSTNAME: ${GATEWAY_SERVICE_NAME}
+    ports:
+      - ${GATEWAY_OUTER_PORT}:${GATEWAY_SERVER_PORT}
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD-SHELL", "curl -f http://$$HOST_NAME:$$SERVER_PORT/actuator/health"]
+      interval: 10s
+      timeout: 5s
+      retries: 3
+      start_period: 15s
+    depends_on:
+      eureka-service:
+        condition: service_healthy
+
+  auth-service:
+    build:
+      context: ./AuthService
+      additional_contexts:
+        assets: ./AuthService
+    image: "auth-service"
+    container_name: "auth-service"
+    environment:
+      JWT_SIGNING_KEY: ${AUTH_JWT_SIGNING_KEY}
+      SERVER_PORT: ${AUTH_SERVER_PORT}
+      EUREKA_URL: ${AUTH_EUREKA_URL}
+      EUREKA_INSTANCE_HOSTNAME: ${AUTH_SERVICE_NAME}
+      SPRING_DATASOURCE_PASSWORD: ${AUTH_SPRING_DATASOURCE_PASSWORD}
+      SPRING_DATASOURCE_URL: ${AUTH_SPRING_DATASOURCE_URL}
+      SPRING_DATASOURCE_USERNAME: ${AUTH_SPRING_DATASOURCE_USERNAME}
+      KAFKA_BOOTSTRAP_SERVERS: ${AUTH_KAFKA_BOOTSTRAP_SERVERS}
+    ports:
+      - ${AUTH_OUTER_PORT}:${AUTH_SERVER_PORT}
+    restart: unless-stopped
+    depends_on:
+      gateway-service:
+        condition: service_healthy
+      eureka-service:
+        condition: service_healthy
+      auth-service-db:
+        condition: service_healthy
+      kafka:
+        condition: service_healthy
+
+  mail-service:
+    build:
+      context: ./MailService
+      additional_contexts:
+        assets: ./MailService
+    image: "mail-service"
+    container_name: "mail-service"
+    environment:
+      KAFKA_BOOTSTRAP_SERVERS: ${MAIL_KAFKA_BOOTSTRAP_SERVERS}
+      SPRING_MAIL_HOST: ${MAIL_SPRING_HOST}
+      SPRING_MAIL_PASSWORD: ${MAIL_SPRING_PASSWORD}
+      SPRING_MAIL_PORT: ${MAIL_SPRING_PORT}
+      SPRING_MAIL_PROPERTIES_MAIL_SMTP_AUTH: ${MAIL_SPRING_PROPERTIES_SMTP_AUTH}
+      SPRING_MAIL_PROPERTIES_MAIL_SMTP_STARTTLS_ENABLE: ${MAIL_SPRING_PROPERTIES_SMTP_STARTTLS_ENABLE}
+      SPRING_MAIL_USERNAME: ${MAIL_SPRING_USERNAME}
+      SERVER_PORT: ${MAIL_SERVER_PORT}
+      OUTER_PORT: ${MAIL_OUTER_PORT}
+    ports:
+      - ${MAIL_OUTER_PORT}:${MAIL_SERVER_PORT}
+    restart: unless-stopped
+    depends_on:
+      gateway-service:
+        condition: service_healthy
+      eureka-service:
+        condition: service_healthy
+      kafka:
+        condition: service_healthy
+
+  user-service:
+    build:
+      context: ./UserService
+      additional_contexts:
+        assets: ./UserService
+    image: "user-service"
+    container_name: "user-service"
+    environment:
+      EUREKA_URL: ${USER_EUREKA_URL}
+      BACKEND_URL: ${USER_BACKEND_URL}
+      KAFKA_URL: ${USER_KAFKA_URL}
+      SPRING_DATASOURCE_PASSWORD: ${USER_SPRING_DATASOURCE_PASSWORD}
+      SPRING_DATASOURCE_URL: ${USER_SPRING_DATASOURCE_URL}
+      SPRING_DATASOURCE_USERNAME: ${USER_SPRING_DATASOURCE_USERNAME}
+      SERVER_PORT: ${USER_SERVER_PORT}
+      OUTER_PORT: ${USER_OUTER_PORT}
+      KAFKA_BOOTSTRAP_SERVERS: ${USER_KAFKA_BOOTSTRAP_SERVERS}
+      EUREKA_INSTANCE_HOSTNAME: ${USER_SERVICE_NAME}
+      SPRING_PROFILES_ACTIVE: api
+    ports:
+      - ${USER_OUTER_PORT}:${USER_SERVER_PORT}
+    restart: unless-stopped
+    depends_on:
+      gateway-service:
+        condition: service_healthy
+      eureka-service:
+        condition: service_healthy
+      user-service-db:
+        condition: service_healthy
+      kafka:
+        condition: service_healthy
+
+  user-outbox-worker:
+    image: "user-service"
+    container_name: "user-outbox-worker"
+    environment:
+      BACKEND_URL: ${USER_BACKEND_URL}
+      KAFKA_URL: ${USER_KAFKA_URL}
+      SPRING_DATASOURCE_PASSWORD: ${USER_SPRING_DATASOURCE_PASSWORD}
+      SPRING_DATASOURCE_URL: ${USER_SPRING_DATASOURCE_URL}
+      SPRING_DATASOURCE_USERNAME: ${USER_SPRING_DATASOURCE_USERNAME}
+      SERVER_PORT: ${USER_SERVER_PORT}
+      KAFKA_BOOTSTRAP_SERVERS: ${USER_KAFKA_BOOTSTRAP_SERVERS}
+      SPRING_PROFILES_ACTIVE: worker
+    restart: unless-stopped
+    depends_on:
+      gateway-service:
+        condition: service_healthy
+      eureka-service:
+        condition: service_healthy
+      user-service-db:
+        condition: service_healthy
+      kafka:
+        condition: service_healthy
+      user-service:
+        condition: service_started
