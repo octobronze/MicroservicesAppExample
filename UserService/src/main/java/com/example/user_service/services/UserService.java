@@ -11,7 +11,6 @@ import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
 import com.example.user_service.dtos.UserCredentialsEventDto;
-import com.example.user_service.dtos.UserInfoResponseDto;
 import com.example.user_service.dtos.UserProfileResponseDto;
 import com.example.user_service.dtos.UserRegistrationRequestDto;
 import com.example.user_service.dtos.VerificationDto;
@@ -41,8 +40,8 @@ public class UserService {
     private final ObjectMapper objectMapper;
     private final VerificationCodeService verificationCodeService;
 
-    @Value("${backend.url}")
-    private String backendUrl;
+    @Value("${verification.url}")
+    private String verificationUrl;
 
     /**
      * Регистрирует пользователя и ставит связанные события в outbox.
@@ -111,19 +110,6 @@ public class UserService {
     }
 
     /**
-     * Возвращает информацию о пользователе.
-     *
-     * @param email  email пользователя
-     * @return объект {@link UserInfoResponseDto} с данными пользователя
-     */
-    public UserInfoResponseDto getUserInfo(String email) {
-        log.info("Requested user info for email: {}", email);
-        var user = userRepo.findByEmailAndRegisteredTrue(email).orElseThrow(() -> new ValidationException(USER_NOT_FOUND));
-
-        return new UserInfoResponseDto(user.getId(), user.getEmail(), user.getPassword());
-    }
-
-    /**
      * Возвращает профиль пользователя.
      *
      * @param userId  идентификатор пользователя
@@ -136,6 +122,6 @@ public class UserService {
     }
 
     private String generateVerificationLink(String email, String code) {
-        return backendUrl + "/user/registration/verify/" + email + "/" + code;
+        return verificationUrl + "/user/registration/verify/" + email + "/" + code;
     }
 }

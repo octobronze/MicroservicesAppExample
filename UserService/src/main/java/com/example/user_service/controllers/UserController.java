@@ -12,7 +12,6 @@ import org.springframework.web.bind.annotation.RequestHeader;
 import org.springframework.web.bind.annotation.RequestMapping;
 import org.springframework.web.bind.annotation.RestController;
 
-import com.example.user_service.dtos.UserInfoResponseDto;
 import com.example.user_service.dtos.UserProfileResponseDto;
 import com.example.user_service.dtos.UserRegistrationRequestDto;
 import com.example.user_service.services.UserService;
@@ -54,17 +53,6 @@ public class UserController {
         userService.verifyUserRegistration(email, code);
 
         return ResponseEntity.ok("Ok");
-    }
-
-    /**
-     * Возвращает информацию о пользователе.
-     *
-     * @param email  email пользователя
-     * @return информация о пользователе
-     */
-    @GetMapping("/{email}")
-    public ResponseEntity<UserInfoResponseDto> getUserInfo(@PathVariable(name = "email") String email) {
-        return ResponseEntity.ok(userService.getUserInfo(email));
     }
 
     /**
